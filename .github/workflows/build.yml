@@ -1,0 +1,47 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: Fetch compile-only mod dependencies
+        run: |
+          mkdir -p libs
+          curl -sfLo libs/xaeroworldmap-fabric-26.2-1.44.2.jar \
+            "https://cdn.modrinth.com/data/NcUtCpym/versions/NzjI8AbM/xaeroworldmap-fabric-26.2-1.44.2.jar"
+          curl -sfLo libs/xaerominimap-fabric-26.2-26.4.2.jar \
+            "https://cdn.modrinth.com/data/1bokaNcj/versions/W7vHFz3T/xaerominimap-fabric-26.2-26.4.2.jar"
+          curl -sfLo libs/modmenu-20.0.1.jar \
+            "https://cdn.modrinth.com/data/mOgUt4GM/versions/njXb639R/modmenu-20.0.1.jar"
+          # resolve the latest baritone 26.2 snapshot from Meteor's maven
+          BASE="https://maven.meteordev.org/snapshots/meteordevelopment/baritone/26.2-SNAPSHOT"
+          JAR=$(curl -sfL "$BASE/maven-metadata.xml" | grep -oP '(?<=<value>)[^<]+' | head -1)
+          curl -sfLo libs/baritone-meteor-26.2.jar "$BASE/baritone-26.2-$JAR.jar"
+          ls -la libs/
+
+      - name: Build
+        run: chmod +x gradlew && ./gradlew build --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xaerodeck
+          path: build/libs/*.jar
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${GITHUB_REF#refs/tags/}" build/libs/*.jar --clobber
