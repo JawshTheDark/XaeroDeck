@@ -196,6 +196,13 @@ public class DeckServer {
             stats.addProperty("elytra", s.elytraPct());
             stats.addProperty("hp", Math.round(s.health() * 10.0) / 10.0);
             o.add("stats", stats);
+            double[] ap = Autopilot.getTarget();
+            if (ap != null) {
+                JsonObject apo = new JsonObject();
+                apo.addProperty("x", ap[0]);
+                apo.addProperty("z", ap[1]);
+                o.add("autopilot", apo);
+            }
             if (!s.effects().isEmpty()) {
                 JsonArray fx = new JsonArray();
                 for (PositionTracker.Effect e : s.effects()) {
@@ -350,6 +357,17 @@ public class DeckServer {
                 return resp;
             }
             String action = body.get("action").getAsString();
+            if (action.equals("flyto")) {
+                if (!Autopilot.enabled) {
+                    resp.addProperty("ok", false);
+                    resp.addProperty("error", "enable the deck-autopilot module in Meteor first");
+                    return resp;
+                }
+                Autopilot.setTarget(body.get("x").getAsInt(), body.get("z").getAsInt());
+                resp.addProperty("ok", true);
+                return resp;
+            }
+            if (action.equals("cancel")) Autopilot.clear();
             String cmd = switch (action) {
                 case "goto" -> "goto " + body.get("x").getAsInt() + " " + body.get("z").getAsInt();
                 case "cancel" -> "cancel";

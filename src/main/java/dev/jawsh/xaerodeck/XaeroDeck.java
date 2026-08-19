@@ -22,6 +22,7 @@ public class XaeroDeck implements ClientModInitializer {
             WorldMapSession s = WorldMapSession.getCurrentSession();
             if (s != null) worldId = s.getMapProcessor().getCurrentWorldId();
             PositionTracker.tick(mc, worldId);
+            Autopilot.tick(mc);
         });
 
         // Opt-in /sethome watcher: mirror server homes as Xaero waypoints.
