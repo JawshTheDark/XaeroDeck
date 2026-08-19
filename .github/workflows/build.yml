@@ -20,16 +20,18 @@ jobs:
       - name: Fetch compile-only mod dependencies
         run: |
           mkdir -p libs
-          curl -sfLo libs/xaeroworldmap-fabric-26.2-1.44.2.jar \
+          UA="XaeroDeck-CI/1.0 (github.com/JawshTheDark/XaeroDeck)"
+          fetch() { curl -fL --retry 3 --retry-delay 2 -A "$UA" -o "$1" "$2"; }
+          fetch libs/xaeroworldmap-fabric-26.2-1.44.2.jar \
             "https://cdn.modrinth.com/data/NcUtCpym/versions/NzjI8AbM/xaeroworldmap-fabric-26.2-1.44.2.jar"
-          curl -sfLo libs/xaerominimap-fabric-26.2-26.4.2.jar \
+          fetch libs/xaerominimap-fabric-26.2-26.4.2.jar \
             "https://cdn.modrinth.com/data/1bokaNcj/versions/W7vHFz3T/xaerominimap-fabric-26.2-26.4.2.jar"
-          curl -sfLo libs/modmenu-20.0.1.jar \
+          fetch libs/modmenu-20.0.1.jar \
             "https://cdn.modrinth.com/data/mOgUt4GM/versions/njXb639R/modmenu-20.0.1.jar"
           # resolve the latest baritone 26.2 snapshot from Meteor's maven
           BASE="https://maven.meteordev.org/snapshots/meteordevelopment/baritone/26.2-SNAPSHOT"
-          JAR=$(curl -sfL "$BASE/maven-metadata.xml" | grep -oP '(?<=<value>)[^<]+' | head -1)
-          curl -sfLo libs/baritone-meteor-26.2.jar "$BASE/baritone-26.2-$JAR.jar"
+          JAR=$(curl -sfL -A "$UA" "$BASE/maven-metadata.xml" | grep -oP '(?<=<value>)[^<]+' | head -1)
+          fetch libs/baritone-meteor-26.2.jar "$BASE/baritone-26.2-$JAR.jar"
           ls -la libs/
 
       - name: Build
