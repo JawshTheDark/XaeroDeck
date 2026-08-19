@@ -21,21 +21,18 @@ entity radar, chat, and stats to companion devices over LAN — built for use wi
 
 ## Building
 
-Drop these release jars into `libs/` (they are compile-time deps and must not be
-redistributed, hence gitignored):
-
-- `xaeroworldmap-fabric-26.2-1.44.2.jar` — [Xaero's World Map](https://modrinth.com/mod/xaeros-world-map)
-- `xaerominimap-fabric-26.2-26.4.2.jar` — [Xaero's Minimap](https://modrinth.com/mod/xaeros-minimap)
-- `modmenu-20.0.1.jar` — [Mod Menu](https://modrinth.com/mod/modmenu)
-- `baritone-meteor-26.2.jar` — [Baritone (Meteor fork)](https://meteorclient.com)
-
-Then:
-
 ```
 ./gradlew build
 ```
 
-Requires Java 25. Output lands in `build/libs/`.
+Requires Java 25. All compile-time dependencies (Xaero's maps, Mod Menu, Meteor,
+Baritone) resolve automatically from the Modrinth and Meteor mavens. Output lands
+in `build/libs/`.
+
+At runtime the mod requires [Xaero's World Map](https://modrinth.com/mod/xaeros-world-map)
+1.44.2 and suggests [Xaero's Minimap](https://modrinth.com/mod/xaeros-minimap) 26.4.2
+(waypoints), [Meteor Client](https://meteorclient.com) (modules/remote control), and
+Baritone (goto).
 
 ## HTTP API
 

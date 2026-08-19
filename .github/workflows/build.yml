@@ -17,25 +17,6 @@ jobs:
           distribution: temurin
           java-version: 25
 
-      - name: Fetch compile-only mod dependencies
-        run: |
-          mkdir -p libs
-          UA="XaeroDeck-CI/1.0 (github.com/JawshTheDark/XaeroDeck)"
-          fetch() { curl -fL --retry 4 --retry-delay 3 --retry-all-errors -A "$UA" -o "$1" "$2"; }
-          # resolve current download URLs from the Modrinth API (CDN links can shift)
-          api() {
-            curl -sfL -A "$UA" "https://api.modrinth.com/v2/version/$1" \
-              | python3 -c "import json,sys; print(json.load(sys.stdin)['files'][0]['url'])"
-          }
-          fetch libs/xaeroworldmap-fabric-26.2-1.44.2.jar "$(api NzjI8AbM)"
-          fetch libs/xaerominimap-fabric-26.2-26.4.2.jar "$(api W7vHFz3T)"
-          fetch libs/modmenu-20.0.1.jar "$(api njXb639R)"
-          # resolve the latest baritone 26.2 snapshot from Meteor's maven
-          BASE="https://maven.meteordev.org/snapshots/meteordevelopment/baritone/26.2-SNAPSHOT"
-          JAR=$(curl -sfL -A "$UA" "$BASE/maven-metadata.xml" | grep -oP '(?<=<value>)[^<]+' | head -1)
-          fetch libs/baritone-meteor-26.2.jar "$BASE/baritone-26.2-$JAR.jar"
-          ls -la libs/
-
       - name: Build
         run: chmod +x gradlew && ./gradlew build --no-daemon
 

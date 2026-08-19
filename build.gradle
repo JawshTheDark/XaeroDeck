@@ -12,6 +12,17 @@ repositories {
     mavenCentral()
     maven { url = 'https://maven.meteordev.org/snapshots' }
     maven { url = 'https://maven.meteordev.org/releases' }
+    exclusiveContent {
+        forRepository {
+            maven {
+                name = "Modrinth"
+                url = "https://api.modrinth.com/maven"
+            }
+        }
+        filter {
+            includeGroup "maven.modrinth"
+        }
+    }
 }
 
 dependencies {
@@ -19,14 +30,14 @@ dependencies {
     implementation "net.fabricmc:fabric-loader:${project.loader_version}"
     implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 
-    // Xaero's WorldMap + Minimap release jars (compile against internals)
-    compileOnly files("libs/xaeroworldmap-fabric-26.2-1.44.2.jar")
-    compileOnly files("libs/xaerominimap-fabric-26.2-26.4.2.jar")
+    // Xaero's WorldMap + Minimap (compile against internals) — via Modrinth maven
+    compileOnly "maven.modrinth:xaeros-world-map:fabric-26.2-1.44.2"
+    compileOnly "maven.modrinth:xaeros-minimap:fabric-26.2-26.4.2"
 
     // Optional integrations
-    compileOnly files("libs/modmenu-20.0.1.jar")
-    compileOnly files("libs/baritone-meteor-26.2.jar")
+    compileOnly "maven.modrinth:modmenu:20.0.1"
     compileOnly "meteordevelopment:meteor-client:26.2-SNAPSHOT"
+    compileOnly "meteordevelopment:baritone:26.2-SNAPSHOT"
 }
 
 tasks.withType(JavaCompile).configureEach {
