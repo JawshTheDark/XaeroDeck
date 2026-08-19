@@ -19,6 +19,19 @@ entity radar, chat, and stats to companion devices over LAN — built for use wi
   remote-control modules; Mod Menu config screen otherwise
 - Pairing-token auth on all control endpoints; UDP auto-discovery beacon
 
+## Install (users)
+
+1. Grab `xaerodeck-*.jar` from [Releases](https://github.com/JawshTheDark/XaeroDeck/releases)
+   and drop it in your mods folder next to Xaero's World Map (+ Minimap/Meteor/Baritone if you use them).
+2. Install the [Android app](https://github.com/JawshTheDark/XaeroDeck-App/releases) on a phone/tablet
+   (built for tablets).
+3. Same WiFi + allow the port through your PC firewall (default 8399,
+   e.g. `sudo ufw allow 8399/tcp` on Linux). The app finds your PC automatically.
+4. For remote control / chat: enable the `chat-relay` / `remote-control` modules in
+   Meteor's XaeroDeck category, then copy the `token` from `config/xaerodeck.json`
+   into the app's settings (⚙). Everything side-effectful is opt-in + token-gated —
+   without the token, other people on your network can only see that the server exists.
+
 ## Building
 
 ```
