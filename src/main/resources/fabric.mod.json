@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "xaerodeck",
+  "version": "${version}",
+  "name": "XaeroDeck",
+  "description": "Serves your Xaero map + live position to companion devices over LAN.",
+  "authors": ["J_wsh"],
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["dev.jawsh.xaerodeck.XaeroDeck"],
+    "modmenu": ["dev.jawsh.xaerodeck.ModMenuEntry"],
+    "meteor": ["dev.jawsh.xaerodeck.meteor.XaeroDeckAddon"]
+  },
+  "mixins": ["xaerodeck.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.19.0",
+    "minecraft": ">=26.2 <26.3",
+    "fabric-api": "*",
+    "xaeroworldmap": "*"
+  },
+  "suggests": {
+    "xaerominimap": "*"
+  }
+}

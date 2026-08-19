@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>XaeroDeck</title>
+<style>
+  html,body{margin:0;height:100%;background:#111;color:#eee;font-family:sans-serif;overflow:hidden}
+  #map{position:absolute;inset:0;touch-action:none}
+  #hud{position:absolute;top:8px;left:8px;background:#000a;padding:6px 10px;border-radius:6px;font-size:13px}
+</style>
+</head>
+<body>
+<canvas id="map"></canvas>
+<div id="hud">connecting…</div>
+<script>
+const cv=document.getElementById('map'),cx=cv.getContext('2d'),hud=document.getElementById('hud');
+let cam={x:0,z:0,scale:0.5},player=null,tiles={},regions=[];
+function resize(){cv.width=innerWidth*devicePixelRatio;cv.height=innerHeight*devicePixelRatio}
+addEventListener('resize',resize);resize();
+function tile(rx,rz){
+  const k=rx+'_'+rz;
+  if(tiles[k])return tiles[k].img;
+  const img=new Image();
+  img.src='/api/tile/'+rx+'/'+rz+'.png';
+  tiles[k]={img};img.onerror=()=>tiles[k].bad=true;
+  return img;
+}
+function draw(){
+  cx.fillStyle='#151515';cx.fillRect(0,0,cv.width,cv.height);
+  cx.imageSmoothingEnabled=cam.scale<1;
+  const s=cam.scale*devicePixelRatio;
+  const w=cv.width/s,h=cv.height/s;
+  const left=cam.x-w/2,top=cam.z-h/2;
+  const r0x=Math.floor(left/512),r0z=Math.floor(top/512),r1x=Math.floor((left+w)/512),r1z=Math.floor((top+h)/512);
+  for(let rx=r0x;rx<=r1x;rx++)for(let rz=r0z;rz<=r1z;rz++){
+    const im=tile(rx,rz),k=rx+'_'+rz;
+    if(im.complete&&!tiles[k].bad&&im.naturalWidth)cx.drawImage(im,(rx*512-left)*s,(rz*512-top)*s,512*s,512*s);
+  }
+  if(player){
+    const px=(player.x-left)*s,pz=(player.z-top)*s;
+    cx.save();cx.translate(px,pz);cx.rotate((player.yaw+180)*Math.PI/180);
+    cx.fillStyle='#4af';cx.beginPath();cx.moveTo(0,-10);cx.lineTo(7,10);cx.lineTo(-7,10);cx.closePath();cx.fill();cx.restore();
+  }
+  requestAnimationFrame(draw);
+}
+draw();
+let drag=null,follow=true;
+cv.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,moved:false}});
+cv.addEventListener('pointermove',e=>{
+  if(!drag)return;
+  const dx=e.clientX-drag.x,dy=e.clientY-drag.y;
+  if(Math.abs(dx)+Math.abs(dy)>4)drag.moved=true,follow=false;
+  cam.x-=dx/cam.scale;cam.z-=dy/cam.scale;drag.x=e.clientX;drag.y=e.clientY;
+});
+cv.addEventListener('pointerup',async e=>{
+  if(drag&&!drag.moved){
+    const s=cam.scale,wx=Math.round(cam.x+(e.clientX-innerWidth/2)/s),wz=Math.round(cam.z+(e.clientY-innerHeight/2)/s);
+    const name=prompt('Waypoint name at '+wx+','+wz+'?');
+    if(name)await fetch('/api/waypoints',{method:'POST',body:JSON.stringify({x:wx,z:wz,name})});
+  }
+  drag=null;
+});
+cv.addEventListener('wheel',e=>{cam.scale=Math.min(8,Math.max(0.06,cam.scale*(e.deltaY<0?1.2:1/1.2)));follow=false});
+async function poll(){
+  try{
+    const st=await (await fetch('/api/status')).json();
+    if(st.inGame){
+      player=st.player;
+      hud.textContent=`${st.worldId??''} ${st.dimension} | ${Math.round(player.x)}, ${Math.round(player.y)}, ${Math.round(player.z)}`;
+      if(follow){cam.x=player.x;cam.z=player.z}
+    }else{hud.textContent='not in a world';player=null}
+  }catch(e){hud.textContent='disconnected'}
+  setTimeout(poll,1000);
+}
+poll();
+setInterval(()=>{ // refresh visible tiles occasionally
+  for(const k in tiles){const t=tiles[k];if(!t.bad){const im=new Image();im.src=t.img.src.split('?')[0]+'?t='+Date.now();im.onload=()=>t.img=im}}
+},30000);
+</script>
+</body>
+</html>

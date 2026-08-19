@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "package": "dev.jawsh.xaerodeck.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "ChatComponentMixin",
+    "MapTileChunkMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

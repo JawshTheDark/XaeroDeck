@@ -1,0 +1,40 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version "${loom_version}"
+}
+
+base {
+    archivesName = project.archives_base_name
+    group = project.maven_group
+    version = "$mod_version+$minecraft_version"
+}
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://maven.meteordev.org/snapshots' }
+    maven { url = 'https://maven.meteordev.org/releases' }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+    // Xaero's WorldMap + Minimap release jars (compile against internals)
+    compileOnly files("libs/xaeroworldmap-fabric-26.2-1.44.2.jar")
+    compileOnly files("libs/xaerominimap-fabric-26.2-26.4.2.jar")
+
+    // Optional integrations
+    compileOnly files("libs/modmenu-20.0.1.jar")
+    compileOnly files("libs/baritone-meteor-26.2.jar")
+    compileOnly "meteordevelopment:meteor-client:26.2-SNAPSHOT"
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 25
+}
+
+processResources {
+    filesMatching('fabric.mod.json') {
+        expand(version: project.version)
+    }
+}

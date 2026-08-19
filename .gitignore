@@ -1,0 +1,8 @@
+.gradle/
+build/
+run/
+*.iml
+.idea/
+
+# Third-party mod jars — NOT redistributable. See README for how to obtain them.
+libs/*.jar
