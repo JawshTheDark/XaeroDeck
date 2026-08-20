@@ -87,6 +87,8 @@ public class OracleService {
 
     private final Map<String, TerrainGenerator> generators = new ConcurrentHashMap<>();
     private volatile long configEpoch = 1;
+    /** ARTIFICIAL_BLOCKS resolved to Block singletons for identity checks; built once on the client thread. */
+    private volatile Set<net.minecraft.world.level.block.Block> artificialBlocks;
 
     private static OracleService instance;
 
@@ -130,10 +132,15 @@ public class OracleService {
         return o;
     }
 
+    /** Cap on distinct compute jobs queued at once, so unauthenticated tile requests
+     *  with attacker-chosen rx/rz can't enqueue unbounded work. */
+    private static final int MAX_INFLIGHT = 16;
+
     /** Returns the overlay tile, or null while there is no data yet (serve 404). */
     public OracleTile getTile(String dimKey, int rx, int rz) {
         if (!enabled() || !isOverworld(dimKey)) return null;
         String key = rx + "_" + rz;
+        // cache check first — a hit never touches the client thread or the worker queue
         OracleTile cached;
         synchronized (cache) {
             cached = cache.get(key);
@@ -141,7 +148,7 @@ public class OracleService {
         Long dirty = dirtyAt.get(key);
         boolean stale = cached != null && dirty != null && dirty > cached.computedMs()
                 && System.currentTimeMillis() - cached.computedMs() > RECOMPUTE_DEBOUNCE_MS;
-        if ((cached == null || stale) && inFlight.add(key)) {
+        if ((cached == null || stale) && inFlight.size() < MAX_INFLIGHT && inFlight.add(key)) {
             long epoch = configEpoch;
             worker.submit(() -> {
                 try {
@@ -156,18 +163,12 @@ public class OracleService {
         return cached;
     }
 
+    /** Answered from the lock-free position snapshot — no client-thread hop per request. */
     private boolean isOverworld(String dimKey) {
         if (dimKey == null || dimKey.isEmpty() || dimKey.equals("current")) {
-            try {
-                return DeckServer.onClientThread(() -> {
-                    WorldMapSession s = WorldMapSession.getCurrentSession();
-                    if (s == null || s.getMapProcessor().getMapWorld() == null) return false;
-                    return s.getMapProcessor().getMapWorld().getCurrentDimension()
-                            .getDimId().identifier().getPath().equals("overworld");
-                });
-            } catch (Exception e) {
-                return false;
-            }
+            String dim = PositionTracker.get().dimension();
+            return dim != null && (dim.equals("minecraft:overworld") || dim.endsWith(":overworld")
+                    || dim.equals("overworld"));
         }
         return dimKey.equals("overworld") || dimKey.equals("minecraft:overworld");
     }
@@ -204,10 +205,9 @@ public class OracleService {
         synchronized (cache) {
             cache.put(key, tile);
         }
-        // nudge companions to refetch this region's overlay; drop the dirty stamp our
-        // own mark() just re-added so we don't recompute in a loop
-        DirtyRegions.mark("overworld", rx, rz);
-        dirtyAt.remove(key);
+        // The companion picks this up on its next oracle-tile poll (it retries 404s on a
+        // timer). We deliberately don't DirtyRegions.mark here — that channel drives base
+        // map-tile invalidation, and the oracle finishing doesn't change the base tile.
     }
 
     private void classifyChunk(Observed obs, int[] pixels, TerrainGenerator[] gens,
@@ -221,20 +221,22 @@ public class OracleService {
         }
         if (valid < 4) return; // not enough mapped columns
 
+        // predicted surface height per (version, sample); simulated once and reused below
+        int[][] preds = new int[gens.length][SAMPLES_PER_CHUNK];
         int bestVer = -1;
         long bestErr = Long.MAX_VALUE;
-        long[] errs = new long[gens.length];
         for (int v = 0; v < gens.length; v++) {
-            if (gens[v] == null) {
-                errs[v] = Long.MAX_VALUE;
-                continue;
-            }
+            if (gens[v] == null) continue;
             long err = 0;
             for (int s = 0; s < SAMPLES_PER_CHUNK; s++) {
-                if (obsH[s] == Short.MIN_VALUE) continue;
-                err += Math.min(columnError(gens[v], worldX + SX[s], worldZ + SZ[s], obsH[s]), 16);
+                if (obsH[s] == Short.MIN_VALUE) {
+                    preds[v][s] = Integer.MIN_VALUE;
+                    continue;
+                }
+                preds[v][s] = gens[v].getFirstHeightInColumn(
+                        worldX + SX[s], worldZ + SZ[s], TerrainGenerator.WORLD_SURFACE_WG);
+                err += Math.min(heightError(preds[v][s], obsH[s]), 16);
             }
-            errs[v] = err;
             if (err < bestErr) {
                 bestErr = err;
                 bestVer = v;
@@ -248,7 +250,7 @@ public class OracleService {
         if (known) {
             for (int s = 0; s < SAMPLES_PER_CHUNK; s++) {
                 if (obsH[s] == Short.MIN_VALUE) continue;
-                if (columnError(gens[bestVer], worldX + SX[s], worldZ + SZ[s], obsH[s]) > MODIFIED_ERR) deviant++;
+                if (heightError(preds[bestVer][s], obsH[s]) > MODIFIED_ERR) deviant++;
             }
         }
         boolean modified = known && deviant >= MODIFIED_MIN_SAMPLES;
@@ -271,8 +273,8 @@ public class OracleService {
      * |observed - predicted| with a water carve-out: where the sim says sea level
      * and Xaero recorded a seabed below it, that's water, not a player hole.
      */
-    private long columnError(TerrainGenerator gen, int x, int z, int obsHeight) {
-        int pred = gen.getFirstHeightInColumn(x, z, TerrainGenerator.WORLD_SURFACE_WG);
+    private long heightError(int pred, int obsHeight) {
+        if (pred == Integer.MIN_VALUE) return 0;
         if (pred >= SEA_LEVEL - 1 && pred <= SEA_LEVEL + 1 && obsHeight < SEA_LEVEL) return 0;
         return Math.abs(obsHeight - pred);
     }
@@ -309,6 +311,7 @@ public class OracleService {
         MapRegion region = mp.getLeafMapRegion(Integer.MAX_VALUE, rx, rz, false);
         if (region == null) return null;
 
+        Set<net.minecraft.world.level.block.Block> artificialSet = artificialBlocks();
         short[] heights = new short[512 * 512];
         java.util.Arrays.fill(heights, Short.MIN_VALUE);
         boolean[] artificial = new boolean[512 * 512];
@@ -330,9 +333,7 @@ public class OracleService {
                                 heights[idx] = (short) b.getHeight();
                                 any = true;
                                 var state = b.getState();
-                                if (state != null && ARTIFICIAL_BLOCKS.contains(
-                                        net.minecraft.core.registries.BuiltInRegistries.BLOCK
-                                                .getKey(state.getBlock()).getPath())) {
+                                if (state != null && artificialSet.contains(state.getBlock())) {
                                     artificial[idx] = true;
                                 }
                             }
@@ -342,5 +343,22 @@ public class OracleService {
             }
         }
         return any ? new Observed(heights, artificial) : null;
+    }
+
+    /** Resolve the artificial-block name set to Block singletons once (call from the client thread). */
+    private Set<net.minecraft.world.level.block.Block> artificialBlocks() {
+        Set<net.minecraft.world.level.block.Block> set = artificialBlocks;
+        if (set != null) return set;
+        set = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        var reg = net.minecraft.core.registries.BuiltInRegistries.BLOCK;
+        for (net.minecraft.world.level.block.Block block : reg) {
+            var loc = reg.getKey(block); // ResourceLocation; name it via var so mappings don't matter
+            if (loc != null && loc.getNamespace().equals("minecraft")
+                    && ARTIFICIAL_BLOCKS.contains(loc.getPath())) {
+                set.add(block);
+            }
+        }
+        artificialBlocks = set;
+        return set;
     }
 }

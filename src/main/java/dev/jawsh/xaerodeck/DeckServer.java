@@ -18,8 +18,13 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 public class DeckServer {
+    private static final int MAX_STREAMS = 4;
     private final HttpServer http;
-    private final ExecutorService pool = Executors.newFixedThreadPool(8);
+    // cached pool: long-lived SSE loops each hold a thread, so a fixed pool would let
+    // a few unauthenticated /api/stream connections starve all other request handling
+    private final ExecutorService pool = Executors.newCachedThreadPool();
+    private final java.util.concurrent.atomic.AtomicInteger openStreams =
+            new java.util.concurrent.atomic.AtomicInteger();
     private volatile boolean running = true;
     private final TileService tiles = new TileService();
     private final WaypointService waypoints = new WaypointService();
@@ -44,9 +49,9 @@ public class DeckServer {
     private void handle(HttpExchange ex) {
         try {
             String path = ex.getRequestURI().getPath();
-            ex.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
-            ex.getResponseHeaders().add("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-            ex.getResponseHeaders().add("Access-Control-Allow-Headers", "Content-Type");
+            // No wildcard CORS: the bundled web UI is same-origin, and the native app
+            // doesn't use CORS. A wildcard would let any website the user visits read
+            // live coordinates from /api/status cross-origin.
             if (ex.getRequestMethod().equals("OPTIONS")) {
                 ex.sendResponseHeaders(204, -1);
                 return;
@@ -154,7 +159,8 @@ public class DeckServer {
                 sendText(ex, 404, "not found");
             }
         } catch (Exception e) {
-            XaeroDeck.LOG.error("XaeroDeck request failed: {}", ex.getRequestURI(), e);
+            // log the path only — the query string can carry ?token=, which must never hit the log
+            XaeroDeck.LOG.error("XaeroDeck request failed: {}", ex.getRequestURI().getPath(), e);
             try {
                 sendText(ex, 500, "error: " + e.getMessage());
             } catch (IOException ignored) {
@@ -175,8 +181,14 @@ public class DeckServer {
             sendText(ex, 400, "expected " + prefix + "[{dim}/]{x}/{z}.png");
             return;
         }
-        int rx = Integer.parseInt(parts[0]);
-        int rz = Integer.parseInt(parts[1].substring(0, parts[1].length() - 4));
+        int rx, rz;
+        try {
+            rx = Integer.parseInt(parts[0]);
+            rz = Integer.parseInt(parts[1].substring(0, parts[1].length() - 4));
+        } catch (NumberFormatException nfe) {
+            sendText(ex, 400, "bad region coords");
+            return;
+        }
 
         TileService.TileResult result = overview ? tiles.renderOverview(dim, rx, rz)
                 : tiles.render(dim, rx, rz);
@@ -211,8 +223,14 @@ public class DeckServer {
             sendText(ex, 400, "expected /api/oracle/tile/[{dim}/]{x}/{z}.png");
             return;
         }
-        int rx = Integer.parseInt(parts[0]);
-        int rz = Integer.parseInt(parts[1].substring(0, parts[1].length() - 4));
+        int rx, rz;
+        try {
+            rx = Integer.parseInt(parts[0]);
+            rz = Integer.parseInt(parts[1].substring(0, parts[1].length() - 4));
+        } catch (NumberFormatException nfe) {
+            sendText(ex, 400, "bad region coords");
+            return;
+        }
 
         OracleService.OracleTile result = OracleService.get().getTile(dim, rx, rz);
         if (result == null) {
@@ -291,6 +309,11 @@ public class DeckServer {
 
     /** Server-sent events: pushes the position snapshot at the configured rate. */
     private void handleStream(HttpExchange ex) throws IOException {
+        if (openStreams.incrementAndGet() > MAX_STREAMS) {
+            openStreams.decrementAndGet();
+            sendText(ex, 503, "too many streams");
+            return;
+        }
         ex.getResponseHeaders().add("Content-Type", "text/event-stream");
         ex.getResponseHeaders().add("Cache-Control", "no-cache");
         ex.sendResponseHeaders(200, 0);
@@ -300,12 +323,14 @@ public class DeckServer {
             long lastNotif = Notifications.latestId(); // don't replay history on connect
             long lastChat = ChatBuffer.latestId();
             long lastMeteorRev = MeteorService.rev();
+            long lastDirty = DirtyRegions.latestId();
             while (running) {
                 PositionTracker.Snapshot s = PositionTracker.get();
                 boolean hasNotifs = Notifications.latestId() > lastNotif;
                 boolean hasChat = DeckConfig.get().chatRelay && ChatBuffer.latestId() > lastChat;
                 boolean meteorChanged = MeteorService.rev() != lastMeteorRev;
-                if (s.time() != lastTime || hasNotifs || hasChat || meteorChanged) {
+                boolean hasDirty = DirtyRegions.latestId() > lastDirty;
+                if (s.time() != lastTime || hasNotifs || hasChat || meteorChanged || hasDirty) {
                     lastTime = s.time();
                     lastMeteorRev = MeteorService.rev();
                     JsonObject payload = status();
@@ -317,8 +342,11 @@ public class DeckServer {
                         payload.add("chat", ChatBuffer.since(lastChat));
                         lastChat = ChatBuffer.latestId();
                     }
-                    JsonArray dirty = DirtyRegions.drain();
-                    if (dirty != null) payload.add("dirty", dirty);
+                    if (hasDirty) {
+                        // per-client cursor: every stream sees each change, not just the first to wake
+                        payload.add("dirty", DirtyRegions.since(lastDirty));
+                        lastDirty = DirtyRegions.latestId();
+                    }
                     os.write(("data: " + payload + "\n\n").getBytes(StandardCharsets.UTF_8));
                     os.flush();
                 }
@@ -326,6 +354,8 @@ public class DeckServer {
             }
         } catch (Exception disconnected) {
             // client went away — normal
+        } finally {
+            openStreams.decrementAndGet();
         }
     }
 
@@ -381,7 +411,10 @@ public class DeckServer {
         if (want == null || want.isEmpty()) return true;
         String got = ex.getRequestHeaders().getFirst("X-Deck-Token");
         if (got == null) got = queryParam(ex, "token");
-        return want.equals(got);
+        if (got == null) return false;
+        // constant-time compare so a hostile LAN client can't time the token out char by char
+        return java.security.MessageDigest.isEqual(
+                want.getBytes(StandardCharsets.UTF_8), got.getBytes(StandardCharsets.UTF_8));
     }
 
     /** Meteor's remote-control module also gates module toggling. */

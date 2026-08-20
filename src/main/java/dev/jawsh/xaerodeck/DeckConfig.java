@@ -60,10 +60,11 @@ public class DeckConfig {
             oracleVersions = new java.util.ArrayList<>(java.util.List.of("1.12.2", "1.18.2", "1.19.2"));
         }
         if (token == null || token.isBlank()) {
+            // ~128 bits over a 31-char alphabet (26 chars); existing shorter tokens are kept as-is
             java.security.SecureRandom r = new java.security.SecureRandom();
-            StringBuilder sb = new StringBuilder(8);
+            StringBuilder sb = new StringBuilder(26);
             String chars = "abcdefghjkmnpqrstuvwxyz23456789";
-            for (int i = 0; i < 8; i++) sb.append(chars.charAt(r.nextInt(chars.length())));
+            for (int i = 0; i < 26; i++) sb.append(chars.charAt(r.nextInt(chars.length())));
             token = sb.toString();
         }
         return this;

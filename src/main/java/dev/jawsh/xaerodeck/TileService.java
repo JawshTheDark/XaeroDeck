@@ -214,12 +214,17 @@ public class TileService {
                 if (cacheFile == null) loadingFromCache = false;
             }
 
-            // Live in-memory regions can change every tick while chunks stream in,
-            // so their version rolls every 3s; disk-cache-backed regions only roll
-            // with the file mtime plus a 30s highlight bucket.
-            long bucket = originalRegion != null ? 3000L : 30000L;
-            long version = (cacheFile != null ? cacheFile.lastModified() : 0L)
-                    ^ (System.currentTimeMillis() / bucket << 20);
+            // Live regions are versioned off their actual change counter (bumped by the
+            // MapTileChunk mixin via DirtyRegions), so a tile is only re-rendered when its
+            // region really changed rather than every 3s on the client thread. Disk-cache
+            // regions still roll with the file mtime plus a 30s highlight bucket.
+            long version;
+            if (originalRegion != null) {
+                version = DirtyRegions.version(dim.getDimId().identifier().getPath(), rx, rz);
+            } else {
+                version = (cacheFile != null ? cacheFile.lastModified() : 0L)
+                        ^ (System.currentTimeMillis() / 30000L << 20);
+            }
             synchronized (cache) {
                 TileResult cached = cache.get(cacheKey);
                 if (cached != null && cached.version() == version) return new RawTile(null, version);
