@@ -9,6 +9,17 @@ import net.fabricmc.loader.api.FabricLoader;
  * the inner Bridge class so this compiles out safely when Meteor is absent.
  */
 public class MeteorService {
+    private static final java.util.concurrent.atomic.AtomicLong REV = new java.util.concurrent.atomic.AtomicLong();
+
+    /** Bumped whenever a Meteor module toggles; streamed so companions refetch module state. */
+    public static long rev() {
+        return REV.get();
+    }
+
+    public static void bumpRev() {
+        REV.incrementAndGet();
+    }
+
     private Boolean present;
 
     private boolean meteorPresent() {

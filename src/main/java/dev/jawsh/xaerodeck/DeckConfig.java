@@ -20,6 +20,11 @@ public class DeckConfig {
     public boolean remoteControl = false;
     /** Shared secret required for control endpoints. Generated on first run. */
     public String token = "";
+    /** World seed for the worldgen oracle overlay. Empty disables the oracle. */
+    public String oracleSeed = "";
+    /** Candidate versions the oracle fingerprints chunks against, in fixed palette order. */
+    public java.util.List<String> oracleVersions = new java.util.ArrayList<>(
+            java.util.List.of("1.12.2", "1.18.2", "1.19.2"));
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static DeckConfig instance;
@@ -50,6 +55,10 @@ public class DeckConfig {
     public DeckConfig clamp() {
         port = Math.max(1024, Math.min(65535, port));
         streamHz = Math.max(1, Math.min(20, streamHz));
+        if (oracleSeed == null) oracleSeed = "";
+        if (oracleVersions == null || oracleVersions.isEmpty()) {
+            oracleVersions = new java.util.ArrayList<>(java.util.List.of("1.12.2", "1.18.2", "1.19.2"));
+        }
         if (token == null || token.isBlank()) {
             java.security.SecureRandom r = new java.security.SecureRandom();
             StringBuilder sb = new StringBuilder(8);

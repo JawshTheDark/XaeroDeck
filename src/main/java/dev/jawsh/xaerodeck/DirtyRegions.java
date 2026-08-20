@@ -13,6 +13,7 @@ public class DirtyRegions {
     public static synchronized void mark(String dimPath, int rx, int rz) {
         dirty.add(dimPath + "|" + rx + "|" + rz);
         if (dirty.size() > 512) dirty.iterator().remove();
+        if (dimPath.equals("overworld")) OracleService.markDirty(dimPath, rx, rz);
     }
 
     public static synchronized JsonArray drain() {

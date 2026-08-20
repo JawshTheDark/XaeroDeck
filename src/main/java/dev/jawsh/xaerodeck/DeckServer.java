@@ -54,7 +54,8 @@ public class DeckServer {
             // control endpoints require the pairing token
             boolean isControl = path.startsWith("/api/meteor/") || path.startsWith("/api/chat")
                     || path.startsWith("/api/baritone")
-                    || (path.equals("/api/waypoints") && !ex.getRequestMethod().equals("GET"));
+                    || (path.equals("/api/waypoints") && !ex.getRequestMethod().equals("GET"))
+                    || (path.equals("/api/oracle/config") && !ex.getRequestMethod().equals("GET"));
             if (isControl && !tokenOk(ex)) {
                 sendText(ex, 401, "missing or wrong token");
                 return;
@@ -90,6 +91,30 @@ public class DeckServer {
                 sendJson(ex, 200, tiles.listRegions(dim));
             } else if (path.equals("/api/dimensions")) {
                 sendJson(ex, 200, tiles.listDimensions());
+            } else if (path.startsWith("/api/oracle/tile/")) {
+                handleOracleTile(ex, path);
+            } else if (path.equals("/api/oracle/legend")) {
+                sendJson(ex, 200, OracleService.get().legend());
+            } else if (path.equals("/api/oracle/config")) {
+                if (ex.getRequestMethod().equals("POST")) {
+                    JsonObject body = readBody(ex);
+                    DeckConfig c = DeckConfig.get();
+                    if (body.has("seed")) c.oracleSeed = body.get("seed").getAsString().trim();
+                    if (body.has("versions")) {
+                        c.oracleVersions = new java.util.ArrayList<>();
+                        for (var v : body.get("versions").getAsJsonArray()) {
+                            c.oracleVersions.add(v.getAsString());
+                        }
+                    }
+                    c.save();
+                    OracleService.get().configChanged();
+                }
+                JsonObject o = new JsonObject();
+                o.addProperty("seed", DeckConfig.get().oracleSeed);
+                JsonArray vs = new JsonArray();
+                for (String v : DeckConfig.get().oracleVersions) vs.add(v);
+                o.add("versions", vs);
+                sendJson(ex, 200, o);
             } else if (path.startsWith("/api/tile/")) {
                 handleTile(ex, path, false);
             } else if (path.startsWith("/api/overview/")) {
@@ -174,6 +199,41 @@ public class DeckServer {
         }
     }
 
+    // /api/oracle/tile/[{dim}/]{rx}/{rz}.png — 404 while disabled, off-overworld, or still computing
+    private void handleOracleTile(HttpExchange ex, String path) throws Exception {
+        String[] parts = path.substring("/api/oracle/tile/".length()).split("/");
+        String dim = "";
+        if (parts.length == 3) {
+            dim = parts[0];
+            parts = new String[]{parts[1], parts[2]};
+        }
+        if (parts.length != 2 || !parts[1].endsWith(".png")) {
+            sendText(ex, 400, "expected /api/oracle/tile/[{dim}/]{x}/{z}.png");
+            return;
+        }
+        int rx = Integer.parseInt(parts[0]);
+        int rz = Integer.parseInt(parts[1].substring(0, parts[1].length() - 4));
+
+        OracleService.OracleTile result = OracleService.get().getTile(dim, rx, rz);
+        if (result == null) {
+            sendText(ex, 404, "no oracle data");
+            return;
+        }
+        String etag = "\"" + result.version() + "\"";
+        String inm = ex.getRequestHeaders().getFirst("If-None-Match");
+        if (etag.equals(inm)) {
+            ex.sendResponseHeaders(304, -1);
+            return;
+        }
+        ex.getResponseHeaders().add("Content-Type", "image/png");
+        ex.getResponseHeaders().add("ETag", etag);
+        ex.getResponseHeaders().add("Cache-Control", "no-cache");
+        ex.sendResponseHeaders(200, result.png().length);
+        try (OutputStream os = ex.getResponseBody()) {
+            os.write(result.png());
+        }
+    }
+
     private JsonObject status() {
         PositionTracker.Snapshot s = PositionTracker.get();
         JsonObject o = new JsonObject();
@@ -225,6 +285,7 @@ public class DeckServer {
             }
             o.add("entities", ents);
         }
+        o.addProperty("meteorRev", MeteorService.rev());
         return o;
     }
 
@@ -238,12 +299,15 @@ public class DeckServer {
             long lastTime = -1;
             long lastNotif = Notifications.latestId(); // don't replay history on connect
             long lastChat = ChatBuffer.latestId();
+            long lastMeteorRev = MeteorService.rev();
             while (running) {
                 PositionTracker.Snapshot s = PositionTracker.get();
                 boolean hasNotifs = Notifications.latestId() > lastNotif;
                 boolean hasChat = DeckConfig.get().chatRelay && ChatBuffer.latestId() > lastChat;
-                if (s.time() != lastTime || hasNotifs || hasChat) {
+                boolean meteorChanged = MeteorService.rev() != lastMeteorRev;
+                if (s.time() != lastTime || hasNotifs || hasChat || meteorChanged) {
                     lastTime = s.time();
+                    lastMeteorRev = MeteorService.rev();
                     JsonObject payload = status();
                     if (hasNotifs) {
                         payload.add("notifications", Notifications.since(lastNotif));

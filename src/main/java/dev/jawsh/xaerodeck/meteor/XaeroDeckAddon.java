@@ -21,6 +21,7 @@ public class XaeroDeckAddon extends MeteorAddon {
         Modules.get().add(new ChatRelayModule());
         Modules.get().add(new RemoteControlModule());
         Modules.get().add(new AutopilotModule());
+        meteordevelopment.meteorclient.MeteorClient.EVENT_BUS.subscribe(new MeteorEvents());
         dev.jawsh.xaerodeck.XaeroDeck.LOG.info("XaeroDeck modules registered in their own category");
     }
 
