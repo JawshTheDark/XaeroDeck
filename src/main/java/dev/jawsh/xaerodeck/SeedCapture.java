@@ -10,7 +10,7 @@ import java.util.regex.Pattern;
  * themselves the moment a crack lands.
  */
 public class SeedCapture {
-    private static final Pattern FOUND = Pattern.compile("Found world seed (-?\\d+)");
+    private static final Pattern FOUND = Pattern.compile("Found world seed \\[?(-?\\d+)");
 
     public static void check(String text) {
         if (text == null) return;
