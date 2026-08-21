@@ -21,6 +21,7 @@ public class Autopilot {
     private static volatile java.util.List<double[]> route = null;
     private static volatile int routeIdx = 0;
     private static volatile boolean routeLoop = false;
+    private static volatile double routeSpacing = Double.MAX_VALUE; // typical leg length
     private static boolean holdingForward = false;
     private static boolean weEnabledElytraFly = false;
     // smoothed speed estimate (blocks/tick) for corner anticipation
@@ -39,6 +40,14 @@ public class Autopilot {
         route = new java.util.ArrayList<>(points);
         routeIdx = 0;
         routeLoop = loop;
+        // typical distance between consecutive points, for arrival auto-scaling
+        double minLeg = Double.MAX_VALUE;
+        for (int i = 1; i < points.size(); i++) {
+            double[] a = points.get(i - 1), b2 = points.get(i);
+            double d = Math.hypot(b2[0] - a[0], b2[1] - a[1]);
+            if (d > 0.5) minLeg = Math.min(minLeg, d);
+        }
+        routeSpacing = minLeg;
         // give the flight a thrust source: enable ElytraFly if it isn't on
         if (!MeteorHook.isElytraFlyActive()) {
             weEnabledElytraFly = MeteorHook.setElytraFly(true);
@@ -61,6 +70,13 @@ public class Autopilot {
         route = null;
         routeIdx = 0;
         routeLoop = false;
+        routeSpacing = Double.MAX_VALUE;
+    }
+
+    /** Arrival distance scaled down for tightly-spaced routes so tiny orbits work. */
+    private static double effectiveArrival() {
+        if (routeSpacing == Double.MAX_VALUE) return arrivalRadius;
+        return Math.min(arrivalRadius, Math.max(8.0, routeSpacing * 0.4));
     }
 
     /** Called every client tick from XaeroDeck's tick handler. */
@@ -88,7 +104,8 @@ public class Autopilot {
         // flown arc hugs the corner instead of overshooting past it
         java.util.List<double[]> r = route;
         boolean hasNext = r != null && (routeIdx + 1 < r.size() || (routeLoop && r.size() > 1));
-        double switchDist = arrivalRadius;
+        double arrive = effectiveArrival();
+        double switchDist = arrive;
         if (hasNext && dist > 0.01) {
             double[] next = r.get((routeIdx + 1) % r.size());
             double ox = next[0] - t[0], oz = next[1] - t[1];
@@ -98,11 +115,11 @@ public class Autopilot {
                 double theta = Math.acos(Math.max(-1.0, Math.min(1.0, dot)));
                 double turnRadius = speedEst / Math.toRadians(Math.max(0.5, turnSpeed));
                 double lead = turnRadius * Math.tan(Math.min(theta, Math.toRadians(150)) / 2);
-                switchDist = Math.max(arrivalRadius, Math.min(lead, 600));
+                switchDist = Math.max(arrive, Math.min(lead, 600));
             }
         }
 
-        if (dist <= (hasNext ? switchDist : arrivalRadius)) {
+        if (dist <= (hasNext ? switchDist : arrive)) {
             if (r != null && routeIdx + 1 < r.size()) {
                 routeIdx++;
             } else if (r != null && routeLoop && r.size() > 1) {
