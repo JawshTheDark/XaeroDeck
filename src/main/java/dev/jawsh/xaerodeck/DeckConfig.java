@@ -45,6 +45,25 @@ public class DeckConfig {
     public java.util.List<String> oracleVersions = new java.util.ArrayList<>(
             java.util.List.of("1.12.2", "1.18.2", "1.19.2"));
 
+    /** Per-world MC version for structure predictions ("" = newest oracle version), keyed by Xaero world id. */
+    public java.util.Map<String, String> worldStructureVersions = new java.util.HashMap<>();
+
+    /** Structure-prediction version for the current world ("" = follow newest oracle version). */
+    public static String currentStructureVersion() {
+        String worldId = PositionTracker.get().worldId();
+        if (worldId == null) return "";
+        return get().worldStructureVersions.getOrDefault(worldId, "");
+    }
+
+    /** Store a structure version for the current world; blank clears it back to auto. */
+    public static void setStructureVersionForCurrentWorld(String version) {
+        String worldId = PositionTracker.get().worldId();
+        if (worldId == null) return;
+        if (version == null || version.isBlank()) get().worldStructureVersions.remove(worldId);
+        else get().worldStructureVersions.put(worldId, version.trim());
+        get().save();
+    }
+
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static DeckConfig instance;
 
@@ -73,6 +92,7 @@ public class DeckConfig {
 
     public DeckConfig clamp() {
         if (worldSeeds == null) worldSeeds = new java.util.HashMap<>();
+        if (worldStructureVersions == null) worldStructureVersions = new java.util.HashMap<>();
         // migrate the old single seed (it was set while playing 6b6t)
         if (oracleSeed != null && !oracleSeed.isBlank() && worldSeeds.isEmpty()) {
             worldSeeds.put("Multiplayer_6b6t.org", oracleSeed.trim());

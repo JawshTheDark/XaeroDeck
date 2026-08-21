@@ -34,8 +34,11 @@ public class SeedFeatureService {
         DeckConfig c = DeckConfig.get();
         String curSeed = DeckConfig.currentSeed();
         if (curSeed.isBlank()) return false;
-        String verName = c.oracleVersions.isEmpty() ? "1.19.2"
-                : c.oracleVersions.get(c.oracleVersions.size() - 1);
+        String verName = DeckConfig.currentStructureVersion();
+        if (verName.isBlank() || MCVersion.fromString(verName) == null) {
+            verName = c.oracleVersions.isEmpty() ? "1.19.2"
+                    : c.oracleVersions.get(c.oracleVersions.size() - 1);
+        }
         String key = curSeed + "|" + verName;
         if (key.equals(initedFor)) return true;
 
@@ -113,6 +116,20 @@ public class SeedFeatureService {
         } catch (Throwable t) {
             XaeroDeck.LOG.info("seed features: {} unsupported at this version", name);
         }
+    }
+
+    /** Versions the bundled seedfinding libraries can predict structures for, oldest→newest. */
+    public static List<String> supportedVersions() {
+        List<String> out = new ArrayList<>();
+        String[] candidates = {
+                "1.8.9", "1.12.2", "1.13.2", "1.14.4", "1.15.2", "1.16.1", "1.16.5",
+                "1.17.1", "1.18", "1.18.2", "1.19", "1.19.2", "1.19.3", "1.19.4",
+                "1.20", "1.20.2", "1.20.4", "1.20.6", "1.21", "1.21.1", "1.21.4"
+        };
+        for (String s : candidates) {
+            if (MCVersion.fromString(s) != null) out.add(s);
+        }
+        return out;
     }
 
     private static long parseSeed(String s) {

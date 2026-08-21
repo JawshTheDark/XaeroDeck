@@ -114,6 +114,9 @@ public class DeckServer {
                     JsonObject body = readBody(ex);
                     DeckConfig c = DeckConfig.get();
                     if (body.has("seed")) DeckConfig.setSeedForCurrentWorld(body.get("seed").getAsString());
+                    if (body.has("structureVersion")) {
+                        DeckConfig.setStructureVersionForCurrentWorld(body.get("structureVersion").getAsString());
+                    }
                     if (body.has("versions")) {
                         c.oracleVersions = new java.util.ArrayList<>();
                         for (var v : body.get("versions").getAsJsonArray()) {
@@ -130,6 +133,10 @@ public class DeckServer {
                 JsonArray vs = new JsonArray();
                 for (String v : DeckConfig.get().oracleVersions) vs.add(v);
                 o.add("versions", vs);
+                o.addProperty("structureVersion", DeckConfig.currentStructureVersion());
+                JsonArray avail = new JsonArray();
+                for (String v : SeedFeatureService.supportedVersions()) avail.add(v);
+                o.add("availableVersions", avail);
                 sendJson(ex, 200, o);
             } else if (path.startsWith("/api/tile/")) {
                 handleTile(ex, path, 0);

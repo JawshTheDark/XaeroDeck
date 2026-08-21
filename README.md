@@ -104,7 +104,9 @@ most big servers already.
   ruined portals (both dimensions), end city — plus all 128 **strongholds**
   (computed once in the background), the fixed **end gateway** ring, and
   **slime chunks** (computed on-device from the seed). Each type toggles
-  individually.
+  individually, and the **generation version is selectable per server**
+  (CONFIG → STRUCTURE VERSION in the app) — pick whatever version the server's
+  terrain was generated on, just like the version dropdown on Chunkbase.
 - ⚠ Custom worldgen (Terralith etc.) breaks era/structure simulation — but slime
   chunks and end gateways are pure seed RNG and stay accurate.
 
