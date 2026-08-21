@@ -290,6 +290,21 @@ public class DeckServer {
                 JsonObject apo = new JsonObject();
                 apo.addProperty("x", ap[0]);
                 apo.addProperty("z", ap[1]);
+                Object[] rt = Autopilot.getRoute();
+                if (rt != null) {
+                    @SuppressWarnings("unchecked")
+                    var pts = (java.util.List<double[]>) rt[0];
+                    JsonArray ra = new JsonArray();
+                    for (double[] rp : pts) {
+                        JsonArray pa = new JsonArray();
+                        pa.add(Math.round(rp[0]));
+                        pa.add(Math.round(rp[1]));
+                        ra.add(pa);
+                    }
+                    apo.add("route", ra);
+                    apo.addProperty("i", (Integer) rt[1]);
+                    apo.addProperty("loop", (Boolean) rt[2]);
+                }
                 o.add("autopilot", apo);
             }
             if (!s.effects().isEmpty()) {
@@ -476,6 +491,81 @@ public class DeckServer {
                 return resp;
             }
             if (action.equals("cancel")) Autopilot.clear();
+            if (action.equals("spiral")) {
+                if (!Autopilot.enabled) {
+                    resp.addProperty("ok", false);
+                    resp.addProperty("error", "enable the deck-autopilot module");
+                    return resp;
+                }
+                double cx = body.get("x").getAsDouble();
+                double cz = body.get("z").getAsDouble();
+                double sp = body.has("spacing") ? body.get("spacing").getAsDouble() : 160;
+                int legsMax = body.has("loops") ? body.get("loops").getAsInt() * 2 : 20;
+                java.util.List<double[]> pts = new java.util.ArrayList<>();
+                double x = cx, z = cz;
+                int dir = 0; // 0 E, 1 S, 2 W, 3 N
+                for (int leg = 1; pts.size() < 512 && leg <= legsMax; leg++) {
+                    double len = Math.ceil(leg / 2.0) * sp;
+                    switch (dir) {
+                        case 0 -> x += len;
+                        case 1 -> z += len;
+                        case 2 -> x -= len;
+                        case 3 -> z -= len;
+                    }
+                    dir = (dir + 1) % 4;
+                    pts.add(new double[]{x, z});
+                }
+                Autopilot.setRoute(pts, false);
+                resp.addProperty("ok", true);
+                resp.addProperty("points", pts.size());
+                return resp;
+            }
+            if (action.equals("area")) {
+                if (!Autopilot.enabled) {
+                    resp.addProperty("ok", false);
+                    resp.addProperty("error", "enable the deck-autopilot module");
+                    return resp;
+                }
+                double x0 = body.get("x0").getAsDouble(), z0 = body.get("z0").getAsDouble();
+                double x1 = body.get("x1").getAsDouble(), z1 = body.get("z1").getAsDouble();
+                double sp = body.has("spacing") ? body.get("spacing").getAsDouble() : 160;
+                if (x1 < x0) { double t = x0; x0 = x1; x1 = t; }
+                if (z1 < z0) { double t = z0; z0 = z1; z1 = t; }
+                java.util.List<double[]> pts = new java.util.ArrayList<>();
+                boolean eastward = true;
+                for (double z = z0; z <= z1 + sp * 0.5 && pts.size() < 510; z += sp) {
+                    double zz = Math.min(z, z1);
+                    if (eastward) {
+                        pts.add(new double[]{x0, zz});
+                        pts.add(new double[]{x1, zz});
+                    } else {
+                        pts.add(new double[]{x1, zz});
+                        pts.add(new double[]{x0, zz});
+                    }
+                    eastward = !eastward;
+                }
+                Autopilot.setRoute(pts, false);
+                resp.addProperty("ok", true);
+                resp.addProperty("points", pts.size());
+                return resp;
+            }
+            if (action.equals("route")) {
+                if (!Autopilot.enabled) {
+                    resp.addProperty("ok", false);
+                    resp.addProperty("error", "enable the deck-autopilot module");
+                    return resp;
+                }
+                java.util.List<double[]> pts = new java.util.ArrayList<>();
+                for (var e : body.getAsJsonArray("points")) {
+                    var p = e.getAsJsonArray();
+                    pts.add(new double[]{p.get(0).getAsDouble(), p.get(1).getAsDouble()});
+                    if (pts.size() >= 64) break;
+                }
+                boolean loop = body.has("loop") && body.get("loop").getAsBoolean();
+                Autopilot.setRoute(pts, loop);
+                resp.addProperty("ok", true);
+                return resp;
+            }
             String cmd = switch (action) {
                 case "goto" -> "goto " + body.get("x").getAsInt() + " " + body.get("z").getAsInt();
                 case "cancel" -> "cancel";

@@ -17,12 +17,25 @@ public class Autopilot {
     public static volatile double cruisePitch = 0.0;   // degrees, 0 = level
     public static volatile int arrivalRadius = 64;     // blocks
 
-    private static volatile double[] target = null;    // [x, z]
+    // route: one or more points followed in order; loop = circle forever
+    private static volatile java.util.List<double[]> route = null;
+    private static volatile int routeIdx = 0;
+    private static volatile boolean routeLoop = false;
     private static boolean holdingForward = false;
     private static boolean weEnabledElytraFly = false;
 
     public static void setTarget(double x, double z) {
-        target = new double[]{x, z};
+        setRoute(java.util.List.of(new double[]{x, z}), false);
+    }
+
+    public static synchronized void setRoute(java.util.List<double[]> points, boolean loop) {
+        if (points == null || points.isEmpty()) {
+            clear();
+            return;
+        }
+        route = new java.util.ArrayList<>(points);
+        routeIdx = 0;
+        routeLoop = loop;
         // give the flight a thrust source: enable ElytraFly if it isn't on
         if (!MeteorHook.isElytraFlyActive()) {
             weEnabledElytraFly = MeteorHook.setElytraFly(true);
@@ -30,16 +43,26 @@ public class Autopilot {
     }
 
     public static double[] getTarget() {
-        return target;
+        java.util.List<double[]> r = route;
+        int i = routeIdx;
+        return (r == null || i >= r.size()) ? null : r.get(i);
+    }
+
+    /** Full route for status payloads: points, current index, loop flag. */
+    public static Object[] getRoute() {
+        java.util.List<double[]> r = route;
+        return r == null ? null : new Object[]{r, routeIdx, routeLoop};
     }
 
     public static void clear() {
-        target = null;
+        route = null;
+        routeIdx = 0;
+        routeLoop = false;
     }
 
     /** Called every client tick from XaeroDeck's tick handler. */
     public static void tick(Minecraft mc) {
-        double[] t = target;
+        double[] t = getTarget();
         if (t == null || !enabled || mc.player == null) {
             releaseForward(mc);
             restoreElytraFly();
@@ -50,10 +73,17 @@ public class Autopilot {
         double dz = t[1] - mc.player.getZ();
         double dist = Math.sqrt(dx * dx + dz * dz);
         if (dist <= arrivalRadius) {
-            target = null;
-            releaseForward(mc);
-            restoreElytraFly();
-            Notifications.add("✈ ARRIVED — %d, %d".formatted((int) t[0], (int) t[1]));
+            java.util.List<double[]> r = route;
+            if (r != null && routeIdx + 1 < r.size()) {
+                routeIdx++;
+            } else if (r != null && routeLoop && r.size() > 1) {
+                routeIdx = 0;
+            } else {
+                clear();
+                releaseForward(mc);
+                restoreElytraFly();
+                Notifications.add("✈ ARRIVED — %d, %d".formatted((int) t[0], (int) t[1]));
+            }
             return;
         }
 
