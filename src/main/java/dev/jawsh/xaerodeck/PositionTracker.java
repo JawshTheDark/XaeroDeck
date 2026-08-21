@@ -54,6 +54,12 @@ public class PositionTracker {
             return;
         }
 
+        // entering a world (or hopping servers): quiet the join notification flood
+        String prevWorld = current.worldId();
+        if (!current.inGame() || (worldId != null && !worldId.equals(prevWorld))) {
+            Notifications.markWorldJoin();
+        }
+
         // death detection → notification (app vibrates on 💀)
         boolean dead = mc.player.isDeadOrDying();
         if (dead && !wasDead) {

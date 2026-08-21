@@ -12,6 +12,12 @@ public class Notifications {
 
     private static final ArrayDeque<Notif> ring = new ArrayDeque<>();
     private static long nextId = 1;
+    private static volatile long joinQuietUntil = 0;
+
+    /** Mods flood client chat during server join — mute the toast feed briefly. */
+    public static void markWorldJoin() {
+        joinQuietUntil = System.currentTimeMillis() + 8000;
+    }
 
     public static synchronized void add(String text) {
         add(text, null);
@@ -19,6 +25,7 @@ public class Notifications {
 
     public static synchronized void add(String text, com.google.gson.JsonArray spans) {
         if (text == null || text.isBlank()) return;
+        if (System.currentTimeMillis() < joinQuietUntil && !text.startsWith("🌱")) return;
         ring.addLast(new Notif(nextId++, System.currentTimeMillis(), text,
                 spans == null ? null : spans.toString()));
         while (ring.size() > 100) ring.removeFirst();
