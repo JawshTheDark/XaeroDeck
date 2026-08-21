@@ -63,8 +63,46 @@ public class SeedFeatureService {
         addType("outpost", "overworld", v, com.seedfinding.mcfeature.structure.PillagerOutpost::new);
         addType("treasure", "overworld", v, com.seedfinding.mcfeature.structure.BuriedTreasure::new);
         addType("end_city", "the_end", v, com.seedfinding.mcfeature.structure.EndCity::new);
+        addType("desert_temple", "overworld", v, com.seedfinding.mcfeature.structure.DesertPyramid::new);
+        addType("jungle_temple", "overworld", v, com.seedfinding.mcfeature.structure.JunglePyramid::new);
+        addType("witch_hut", "overworld", v, com.seedfinding.mcfeature.structure.SwampHut::new);
+        addType("igloo", "overworld", v, com.seedfinding.mcfeature.structure.Igloo::new);
+        addType("shipwreck", "overworld", v, com.seedfinding.mcfeature.structure.Shipwreck::new);
+        addType("ocean_ruin", "overworld", v, com.seedfinding.mcfeature.structure.OceanRuin::new);
+        addType("ruined_portal", "overworld", v,
+                ver -> new com.seedfinding.mcfeature.structure.RuinedPortal(Dimension.OVERWORLD, ver));
+        addType("ruined_portal_n", "the_nether", v,
+                ver -> new com.seedfinding.mcfeature.structure.RuinedPortal(Dimension.NETHER, ver));
         initedFor = key;
+        startStrongholdCompute(v, seed);
         return !types.isEmpty();
+    }
+
+    // strongholds are ring-based, not region-based — computed once in the background
+    private volatile List<int[]> strongholds = null;
+    private volatile String strongholdKey = null;
+
+    private void startStrongholdCompute(MCVersion v, long seed) {
+        String key = seed + "|" + v.name();
+        if (key.equals(strongholdKey)) return;
+        strongholdKey = key;
+        strongholds = null;
+        Thread t = new Thread(() -> {
+            try {
+                var sh = new com.seedfinding.mcfeature.structure.Stronghold(v);
+                BiomeSource bs = biomeSources.get("overworld");
+                if (bs == null) return;
+                CPos[] starts = sh.getStarts(bs, 128, new com.seedfinding.mcseed.rand.JRand(seed));
+                List<int[]> out = new ArrayList<>(starts.length);
+                for (CPos c : starts) out.add(new int[]{c.getX() * 16 + 8, c.getZ() * 16 + 8});
+                if (key.equals(strongholdKey)) strongholds = out;
+                XaeroDeck.LOG.info("seed features: {} strongholds computed", out.size());
+            } catch (Throwable e) {
+                XaeroDeck.LOG.info("seed features: strongholds unavailable", e);
+            }
+        }, "xaerodeck-strongholds");
+        t.setDaemon(true);
+        t.start();
     }
 
     private void addType(String name, String dim, MCVersion v,
@@ -106,6 +144,35 @@ public class SeedFeatureService {
                 collect(t, seed, x0, z0, x1, z1, arr);
             } catch (Throwable e) {
                 XaeroDeck.LOG.debug("seed features: {} failed", t.name(), e);
+            }
+        }
+        if (dim.equals("overworld")) {
+            List<int[]> shs = strongholds;
+            if (shs != null) {
+                for (int[] p : shs) {
+                    if (p[0] >= x0 && p[0] <= x1 && p[1] >= z0 && p[1] <= z1) {
+                        JsonObject o = new JsonObject();
+                        o.addProperty("t", "stronghold");
+                        o.addProperty("x", p[0]);
+                        o.addProperty("z", p[1]);
+                        arr.add(o);
+                    }
+                }
+            }
+        }
+        if (dim.equals("the_end")) {
+            // 20 end gateways on a fixed ring at radius ~96, every 18 degrees
+            for (int k = 0; k < 20; k++) {
+                double a = 2 * Math.PI * k / 20;
+                int gx = (int) Math.round(96 * Math.cos(a));
+                int gz = (int) Math.round(96 * Math.sin(a));
+                if (gx >= x0 && gx <= x1 && gz >= z0 && gz <= z1) {
+                    JsonObject o = new JsonObject();
+                    o.addProperty("t", "gateway");
+                    o.addProperty("x", gx);
+                    o.addProperty("z", gz);
+                    arr.add(o);
+                }
             }
         }
         return resp;
