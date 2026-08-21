@@ -98,6 +98,49 @@ public class TileService {
         });
     }
 
+    /** Newest rendered cache for a region on disk, searching surface then nether cave layers. */
+    private File[] diskCacheFile(MapProcessor mp, MapDimension dim, int rx, int rz) {
+        try {
+            String worldId = mp.getCurrentWorldId();
+            if (worldId == null) return null;
+            String dimFolder = switch (dim.getDimId().identifier().getPath()) {
+                case "overworld" -> "null";
+                case "the_nether" -> "DIM-1";
+                case "the_end" -> "DIM1";
+                default -> "dim%" + dim.getDimId().identifier().getPath();
+            };
+            java.nio.file.Path base = net.fabricmc.loader.api.FabricLoader.getInstance().getGameDir()
+                    .resolve("xaero").resolve("world-map").resolve(worldId)
+                    .resolve(dimFolder).resolve("mw$default");
+            File best = null;
+            File surface = base.resolve("cache_1").resolve(rx + "_" + rz + ".xwmc").toFile();
+            if (surface.isFile()) best = surface;
+            File[] layers = base.resolve("caves").toFile().listFiles(File::isDirectory);
+            if (layers != null) {
+                for (File l : layers) {
+                    File f = new File(l, "cache_1/" + rx + "_" + rz + ".xwmc");
+                    if (f.isFile() && (best == null || f.lastModified() > best.lastModified())) best = f;
+                }
+            }
+            return best == null ? null : new File[]{best};
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private int diskLayerOf(File f) {
+        File cacheDir = f.getParentFile();
+        File layerDir = cacheDir == null ? null : cacheDir.getParentFile();
+        if (layerDir != null && layerDir.getParentFile() != null
+                && layerDir.getParentFile().getName().equals("caves")) {
+            try {
+                return Integer.parseInt(layerDir.getName());
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return Integer.MAX_VALUE;
+    }
+
     private MapProcessor processor() {
         WorldMapSession session = WorldMapSession.getCurrentSession();
         if (session == null) return null;
@@ -197,13 +240,12 @@ public class TileService {
             if (regionInfo == null && mapLayer.regionDetectionExists(rx, rz)) {
                 regionInfo = mapLayer.getRegionDetection(rx, rz);
             }
-            if (regionInfo == null) return null;
 
             boolean loadingFromCache = originalRegion == null
                     || !originalRegion.isBeingWritten()
                     || originalRegion.getLoadState() != 2;
             File cacheFile = null;
-            if (loadingFromCache) {
+            if (regionInfo != null && loadingFromCache) {
                 cacheFile = regionInfo.getCacheFile();
                 if (cacheFile == null && !regionInfo.hasLookedForCache()) {
                     try {
@@ -211,8 +253,19 @@ public class TileService {
                     } catch (Exception ignored) {
                     }
                 }
-                if (cacheFile == null) loadingFromCache = false;
             }
+            // No detection (non-current dims never run it): resolve the rendered
+            // cache straight from Xaero's disk layout, including nether cave layers.
+            if (cacheFile == null && originalRegion == null) {
+                File[] found = diskCacheFile(mp, dim, rx, rz);
+                if (found != null) {
+                    cacheFile = found[0];
+                    layer = diskLayerOf(found[0]);
+                }
+                loadingFromCache = cacheFile != null;
+            }
+            if (regionInfo == null && cacheFile == null) return null;
+            if (cacheFile == null) loadingFromCache = false;
 
             // Live regions are versioned off their actual change counter (bumped by the
             // MapTileChunk mixin via DirtyRegions), so a tile is only re-rendered when its
