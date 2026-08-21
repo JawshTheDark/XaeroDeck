@@ -18,7 +18,9 @@ public class ChatComponentMixin {
     @Inject(method = "addClientSystemMessage", at = @At("HEAD"))
     private void xaerodeck$captureNotification(Component message, CallbackInfo ci) {
         try {
-            Notifications.add(message.getString(), dev.jawsh.xaerodeck.StyledText.spans(message));
+            String text = message.getString();
+            Notifications.add(text, dev.jawsh.xaerodeck.StyledText.spans(message));
+            dev.jawsh.xaerodeck.SeedCapture.check(text);
         } catch (Throwable ignored) {
         }
     }

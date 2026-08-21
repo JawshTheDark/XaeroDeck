@@ -32,10 +32,11 @@ public class SeedFeatureService {
 
     private synchronized boolean ensureInit() {
         DeckConfig c = DeckConfig.get();
-        if (c.oracleSeed == null || c.oracleSeed.isBlank()) return false;
+        String curSeed = DeckConfig.currentSeed();
+        if (curSeed.isBlank()) return false;
         String verName = c.oracleVersions.isEmpty() ? "1.19.2"
                 : c.oracleVersions.get(c.oracleVersions.size() - 1);
-        String key = c.oracleSeed + "|" + verName;
+        String key = curSeed + "|" + verName;
         if (key.equals(initedFor)) return true;
 
         types.clear();
@@ -43,7 +44,7 @@ public class SeedFeatureService {
         regionCache.clear();
         MCVersion v = MCVersion.fromString(verName);
         if (v == null) v = MCVersion.v1_19_2;
-        long seed = parseSeed(c.oracleSeed);
+        long seed = parseSeed(curSeed);
 
         for (Dimension d : new Dimension[]{Dimension.OVERWORLD, Dimension.NETHER, Dimension.END}) {
             try {
@@ -98,7 +99,7 @@ public class SeedFeatureService {
         long w = (long) x1 - x0, h = (long) z1 - z0;
         if (w <= 0 || h <= 0 || w > 65536 || h > 65536) return resp;
 
-        long seed = parseSeed(DeckConfig.get().oracleSeed);
+        long seed = parseSeed(DeckConfig.currentSeed());
         for (TypeEntry t : types) {
             if (!t.dim().equals(dim)) continue;
             try {

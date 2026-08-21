@@ -98,7 +98,7 @@ public class OracleService {
     }
 
     public boolean enabled() {
-        return !DeckConfig.get().oracleSeed.isBlank();
+        return !DeckConfig.currentSeed().isBlank();
     }
 
     /** Called from DirtyRegions when Xaero rebuilds a region so we recompute eventually. */
@@ -182,7 +182,7 @@ public class OracleService {
         if (obs == null || epoch != configEpoch) return;
 
         DeckConfig c = DeckConfig.get();
-        long seed = parseSeed(c.oracleSeed);
+        long seed = parseSeed(DeckConfig.currentSeed());
         TerrainGenerator[] gens = new TerrainGenerator[c.oracleVersions.size()];
         for (int i = 0; i < gens.length; i++) {
             gens[i] = generatorFor(c.oracleVersions.get(i), seed);

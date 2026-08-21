@@ -113,7 +113,7 @@ public class DeckServer {
                 if (ex.getRequestMethod().equals("POST")) {
                     JsonObject body = readBody(ex);
                     DeckConfig c = DeckConfig.get();
-                    if (body.has("seed")) c.oracleSeed = body.get("seed").getAsString().trim();
+                    if (body.has("seed")) DeckConfig.setSeedForCurrentWorld(body.get("seed").getAsString());
                     if (body.has("versions")) {
                         c.oracleVersions = new java.util.ArrayList<>();
                         for (var v : body.get("versions").getAsJsonArray()) {
@@ -124,7 +124,9 @@ public class DeckServer {
                     OracleService.get().configChanged();
                 }
                 JsonObject o = new JsonObject();
-                o.addProperty("seed", DeckConfig.get().oracleSeed);
+                o.addProperty("seed", DeckConfig.currentSeed());
+                String wid = PositionTracker.get().worldId();
+                if (wid != null) o.addProperty("worldId", wid);
                 JsonArray vs = new JsonArray();
                 for (String v : DeckConfig.get().oracleVersions) vs.add(v);
                 o.add("versions", vs);

@@ -20,8 +20,27 @@ public class DeckConfig {
     public boolean remoteControl = false;
     /** Shared secret required for control endpoints. Generated on first run. */
     public String token = "";
-    /** World seed for the worldgen oracle overlay. Empty disables the oracle. */
+    /** Legacy single seed — migrated into worldSeeds on load. */
     public String oracleSeed = "";
+    /** Per-world seeds for the oracle/structure overlays, keyed by Xaero world id. */
+    public java.util.Map<String, String> worldSeeds = new java.util.HashMap<>();
+
+    /** Seed for the world the player is currently in ("" = none known → overlays off). */
+    public static String currentSeed() {
+        String worldId = PositionTracker.get().worldId();
+        if (worldId == null) return "";
+        return get().worldSeeds.getOrDefault(worldId, "");
+    }
+
+    /** Store a seed for the current world. Returns the world id, or null if not in one. */
+    public static String setSeedForCurrentWorld(String seed) {
+        String worldId = PositionTracker.get().worldId();
+        if (worldId == null) return null;
+        if (seed == null || seed.isBlank()) get().worldSeeds.remove(worldId);
+        else get().worldSeeds.put(worldId, seed.trim());
+        get().save();
+        return worldId;
+    }
     /** Candidate versions the oracle fingerprints chunks against, in fixed palette order. */
     public java.util.List<String> oracleVersions = new java.util.ArrayList<>(
             java.util.List.of("1.12.2", "1.18.2", "1.19.2"));
@@ -53,6 +72,12 @@ public class DeckConfig {
     }
 
     public DeckConfig clamp() {
+        if (worldSeeds == null) worldSeeds = new java.util.HashMap<>();
+        // migrate the old single seed (it was set while playing 6b6t)
+        if (oracleSeed != null && !oracleSeed.isBlank() && worldSeeds.isEmpty()) {
+            worldSeeds.put("Multiplayer_6b6t.org", oracleSeed.trim());
+            oracleSeed = "";
+        }
         port = Math.max(1024, Math.min(65535, port));
         streamHz = Math.max(1, Math.min(20, streamHz));
         if (oracleSeed == null) oracleSeed = "";
