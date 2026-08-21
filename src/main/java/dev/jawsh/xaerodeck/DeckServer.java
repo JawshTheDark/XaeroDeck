@@ -500,20 +500,17 @@ public class DeckServer {
                 double cx = body.get("x").getAsDouble();
                 double cz = body.get("z").getAsDouble();
                 double sp = body.has("spacing") ? body.get("spacing").getAsDouble() : 160;
-                int legsMax = body.has("loops") ? body.get("loops").getAsInt() * 2 : 20;
+                int loops = body.has("loops") ? body.get("loops").getAsInt() : 8;
+                // smooth Archimedean spiral: r grows by `sp` per revolution, points at
+                // ~120-block arc steps — constant gentle turn, no corners to overshoot
                 java.util.List<double[]> pts = new java.util.ArrayList<>();
-                double x = cx, z = cz;
-                int dir = 0; // 0 E, 1 S, 2 W, 3 N
-                for (int leg = 1; pts.size() < 512 && leg <= legsMax; leg++) {
-                    double len = Math.ceil(leg / 2.0) * sp;
-                    switch (dir) {
-                        case 0 -> x += len;
-                        case 1 -> z += len;
-                        case 2 -> x -= len;
-                        case 3 -> z -= len;
-                    }
-                    dir = (dir + 1) % 4;
-                    pts.add(new double[]{x, z});
+                double b = sp / (2 * Math.PI);
+                double theta = 2 * Math.PI * 0.75; // skip the tiny center curl
+                double maxTheta = 2 * Math.PI * loops;
+                while (theta <= maxTheta && pts.size() < 512) {
+                    double rr = b * theta;
+                    pts.add(new double[]{cx + rr * Math.cos(theta), cz + rr * Math.sin(theta)});
+                    theta += Math.max(0.12, 120.0 / Math.max(rr, 40));
                 }
                 Autopilot.setRoute(pts, false);
                 resp.addProperty("ok", true);
