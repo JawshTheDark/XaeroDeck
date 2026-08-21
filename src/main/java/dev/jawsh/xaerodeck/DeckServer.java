@@ -132,9 +132,11 @@ public class DeckServer {
                 o.add("versions", vs);
                 sendJson(ex, 200, o);
             } else if (path.startsWith("/api/tile/")) {
-                handleTile(ex, path, false);
+                handleTile(ex, path, 0);
+            } else if (path.startsWith("/api/overview2/")) {
+                handleTile(ex, path, 2);
             } else if (path.startsWith("/api/overview/")) {
-                handleTile(ex, path, true);
+                handleTile(ex, path, 1);
             } else if (path.equals("/api/waypoints")) {
                 switch (ex.getRequestMethod()) {
                     case "POST" -> {
@@ -180,8 +182,12 @@ public class DeckServer {
     }
 
     // /api/tile/[{dim}/]{rx}/{rz}.png or /api/overview/[{dim}/]{ox}/{oz}.png
-    private void handleTile(HttpExchange ex, String path, boolean overview) throws Exception {
-        String prefix = overview ? "/api/overview/" : "/api/tile/";
+    private void handleTile(HttpExchange ex, String path, int level) throws Exception {
+        String prefix = switch (level) {
+            case 2 -> "/api/overview2/";
+            case 1 -> "/api/overview/";
+            default -> "/api/tile/";
+        };
         String[] parts = path.substring(prefix.length()).split("/");
         String dim = "";
         if (parts.length == 3) {
@@ -201,8 +207,11 @@ public class DeckServer {
             return;
         }
 
-        TileService.TileResult result = overview ? tiles.renderOverview(dim, rx, rz)
-                : tiles.render(dim, rx, rz);
+        TileService.TileResult result = switch (level) {
+            case 2 -> tiles.renderOverview2(dim, rx, rz);
+            case 1 -> tiles.renderOverview(dim, rx, rz);
+            default -> tiles.render(dim, rx, rz);
+        };
         if (result == null) {
             sendText(ex, 404, "no data for region");
             return;

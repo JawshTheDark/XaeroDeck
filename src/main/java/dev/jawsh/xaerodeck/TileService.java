@@ -198,6 +198,50 @@ public class TileService {
         return result;
     }
 
+    /** Level-2 overview: 2x2 level-1 tiles (8x8 regions, 4096 blocks) in one 512px image. */
+    public TileResult renderOverview2(String dimKey, int ox, int oz) throws Exception {
+        long versionAcc = 0;
+        TileResult[][] tiles2 = new TileResult[2][2];
+        boolean any = false;
+        for (int dx = 0; dx < 2; dx++) {
+            for (int dz = 0; dz < 2; dz++) {
+                TileResult t = renderOverview(dimKey, ox * 2 + dx, oz * 2 + dz);
+                tiles2[dx][dz] = t;
+                if (t != null) {
+                    any = true;
+                    versionAcc = versionAcc * 31 ^ t.version();
+                }
+            }
+        }
+        if (!any) return null;
+        String key = "ov2_" + dimKey + "_" + ox + "_" + oz;
+        synchronized (cache) {
+            TileResult cached = cache.get(key);
+            if (cached != null && cached.version() == versionAcc) return cached;
+        }
+        BufferedImage img = new BufferedImage(512, 512, BufferedImage.TYPE_INT_ARGB);
+        java.awt.Graphics2D g = img.createGraphics();
+        g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
+                java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        for (int dx = 0; dx < 2; dx++) {
+            for (int dz = 0; dz < 2; dz++) {
+                TileResult t = tiles2[dx][dz];
+                if (t == null) continue;
+                BufferedImage srcImg = javax.imageio.ImageIO.read(
+                        new java.io.ByteArrayInputStream(t.png()));
+                g.drawImage(srcImg, dx * 256, dz * 256, 256, 256, null);
+            }
+        }
+        g.dispose();
+        ByteArrayOutputStream out = new ByteArrayOutputStream(32 * 1024);
+        ImageIO.write(img, "png", out);
+        TileResult result = new TileResult(out.toByteArray(), versionAcc);
+        synchronized (cache) {
+            cache.put(key, result);
+        }
+        return result;
+    }
+
     public TileResult render(String dimKey, int rx, int rz) throws Exception {
         String cacheKey = dimKey + "_" + rx + "_" + rz;
         RawTile raw = renderRaw(dimKey, rx, rz, cacheKey);
