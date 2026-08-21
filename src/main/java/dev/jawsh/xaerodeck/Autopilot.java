@@ -23,6 +23,9 @@ public class Autopilot {
     private static volatile boolean routeLoop = false;
     private static boolean holdingForward = false;
     private static boolean weEnabledElytraFly = false;
+    // smoothed speed estimate (blocks/tick) for corner anticipation
+    private static double lastX = Double.NaN, lastZ = 0;
+    private static double speedEst = 0;
 
     public static void setTarget(double x, double z) {
         setRoute(java.util.List.of(new double[]{x, z}), false);
@@ -69,11 +72,37 @@ public class Autopilot {
             return;
         }
 
-        double dx = t[0] - mc.player.getX();
-        double dz = t[1] - mc.player.getZ();
+        double px = mc.player.getX(), pz = mc.player.getZ();
+        if (!Double.isNaN(lastX)) {
+            double inst = Math.hypot(px - lastX, pz - lastZ);
+            if (inst < 40) speedEst = speedEst * 0.8 + inst * 0.2;
+        }
+        lastX = px; lastZ = pz;
+
+        double dx = t[0] - px;
+        double dz = t[1] - pz;
         double dist = Math.sqrt(dx * dx + dz * dz);
-        if (dist <= arrivalRadius) {
-            java.util.List<double[]> r = route;
+
+        // corner anticipation: hand off to the next leg early by the distance a
+        // turn of this angle needs at our current speed and turn rate, so the
+        // flown arc hugs the corner instead of overshooting past it
+        java.util.List<double[]> r = route;
+        boolean hasNext = r != null && (routeIdx + 1 < r.size() || (routeLoop && r.size() > 1));
+        double switchDist = arrivalRadius;
+        if (hasNext && dist > 0.01) {
+            double[] next = r.get((routeIdx + 1) % r.size());
+            double ox = next[0] - t[0], oz = next[1] - t[1];
+            double olen = Math.hypot(ox, oz);
+            if (olen > 1) {
+                double dot = (dx / dist) * (ox / olen) + (dz / dist) * (oz / olen);
+                double theta = Math.acos(Math.max(-1.0, Math.min(1.0, dot)));
+                double turnRadius = speedEst / Math.toRadians(Math.max(0.5, turnSpeed));
+                double lead = turnRadius * Math.tan(Math.min(theta, Math.toRadians(150)) / 2);
+                switchDist = Math.max(arrivalRadius, Math.min(lead, 600));
+            }
+        }
+
+        if (dist <= (hasNext ? switchDist : arrivalRadius)) {
             if (r != null && routeIdx + 1 < r.size()) {
                 routeIdx++;
             } else if (r != null && routeLoop && r.size() > 1) {
