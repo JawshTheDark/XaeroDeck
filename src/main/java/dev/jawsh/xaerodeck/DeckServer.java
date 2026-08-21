@@ -29,6 +29,7 @@ public class DeckServer {
     private final TileService tiles = new TileService();
     private final WaypointService waypoints = new WaypointService();
     private final MeteorService meteor = new MeteorService();
+    private final SeedFeatureService seedFeatures = new SeedFeatureService();
 
     public DeckServer(int port) throws IOException {
         http = HttpServer.create(new InetSocketAddress("0.0.0.0", port), 0);
@@ -96,6 +97,14 @@ public class DeckServer {
                 sendJson(ex, 200, tiles.listRegions(dim));
             } else if (path.equals("/api/dimensions")) {
                 sendJson(ex, 200, tiles.listDimensions());
+            } else if (path.equals("/api/seed/features")) {
+                String dim = queryParam(ex, "dim");
+                if (dim.isEmpty()) dim = "overworld";
+                sendJson(ex, 200, seedFeatures.features(dim,
+                        (int) parseLongOr(queryParam(ex, "x0"), 0),
+                        (int) parseLongOr(queryParam(ex, "z0"), 0),
+                        (int) parseLongOr(queryParam(ex, "x1"), 0),
+                        (int) parseLongOr(queryParam(ex, "z1"), 0)));
             } else if (path.startsWith("/api/oracle/tile/")) {
                 handleOracleTile(ex, path);
             } else if (path.equals("/api/oracle/legend")) {
