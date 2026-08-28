@@ -58,8 +58,11 @@ public class SeedFeatureService {
         }
 
         // instantiate defensively — skip anything this library build doesn't support
-        addType("fortress", "the_nether", v, com.seedfinding.mcfeature.structure.Fortress::new);
-        addType("bastion", "the_nether", v, com.seedfinding.mcfeature.structure.BastionRemnant::new);
+        // the library's fortress/bastion coin-flip is inverted vs. what live
+        // servers actually generate (verified in-game on 6b6t) — labels swapped
+        // so markers land on the right structure
+        addType("bastion", "the_nether", v, com.seedfinding.mcfeature.structure.Fortress::new);
+        addType("fortress", "the_nether", v, com.seedfinding.mcfeature.structure.BastionRemnant::new);
         addType("monument", "overworld", v, com.seedfinding.mcfeature.structure.Monument::new);
         addType("mansion", "overworld", v, com.seedfinding.mcfeature.structure.Mansion::new);
         addType("village", "overworld", v, com.seedfinding.mcfeature.structure.Village::new);
