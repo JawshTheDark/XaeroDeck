@@ -572,7 +572,8 @@ public class DeckServer {
                 for (var e : body.getAsJsonArray("points")) {
                     var p = e.getAsJsonArray();
                     pts.add(new double[]{p.get(0).getAsDouble(), p.get(1).getAsDouble()});
-                    if (pts.size() >= 64) break;
+                    // 512 matches the app's shape generators — a dense spiral is ~450 pts
+                    if (pts.size() >= 512) break;
                 }
                 boolean loop = body.has("loop") && body.get("loop").getAsBoolean();
                 Autopilot.setRoute(pts, loop);
